@@ -13,6 +13,14 @@ namespace SepaWriter
         private string endToEndId;
         private string remittanceInformation;
 		private string purpose;
+        private string description;
+
+
+        /// <summary>
+        ///     Is domestic transaction
+        /// </summary>
+
+        public bool IsDomesticTransaction { get; set; }
 
         /// <summary>
         ///     Create a SEPA Credit transfer transaction
@@ -84,6 +92,15 @@ namespace SepaWriter
 
                 amount = value;
             }
+        }
+
+        /// <summary>
+        ///     Description
+        /// </summary>
+        public string Description
+        {
+            get { return description; }
+            set { description = StringUtils.GetLimitedString(value, 140); }
         }
 
         /// <summary>

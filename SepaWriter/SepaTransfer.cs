@@ -104,6 +104,16 @@ namespace SepaWriter
         }
 
         /// <summary>
+        ///     Return the XML
+        /// </summary>
+        /// <returns></returns>
+        public XmlDocument AsXml(XmlDocument xml = null)
+        {
+            return GenerateXml(xml);
+        }
+
+
+        /// <summary>
         ///     Save in an XML file
         /// </summary>
         public void Save(string filename)
@@ -147,7 +157,7 @@ namespace SepaWriter
                 throw new SepaRuleException("Transaction Id '" + id + "' must be unique in a transfer.");
             }
 
-            if (transactions.Exists(transfert => transfert.EndToEndId != null && transfert.EndToEndId == endToEndId))
+            if (transactions.Exists(transfert => transfert.EndToEndId != null && transfert.EndToEndId == endToEndId && endToEndId != "HR99"))
             {
                 throw new SepaRuleException("End to End Id '" + endToEndId + "' must be unique in a transfer.");
             }
@@ -199,7 +209,7 @@ namespace SepaWriter
         ///     Generate the XML structure
         /// </summary>
         /// <returns></returns>
-        protected abstract XmlDocument GenerateXml();
+        protected abstract XmlDocument GenerateXml(XmlDocument xml = null);
 
         protected abstract bool CheckSchema(SepaSchema aSchema);
     }

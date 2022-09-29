@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.Text;
 using System.Xml;
 using SepaWriter.Utils;
@@ -81,39 +82,54 @@ namespace SepaWriter
         ///     Generate the XML structure
         /// </summary>
         /// <returns></returns>
-        protected override XmlDocument GenerateXml()
+        protected override XmlDocument GenerateXml(XmlDocument xml = null)
         {
             CheckMandatoryData();
 
-            var xml = new XmlDocument();
-            xml.AppendChild(xml.CreateXmlDeclaration("1.0", Encoding.UTF8.BodyName, "yes"));
-            var el = (XmlElement)xml.AppendChild(xml.CreateElement("Document"));
-            el.SetAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
-            el.SetAttribute("xmlns", "urn:iso:std:iso:20022:tech:xsd:" + SepaSchemaUtils.SepaSchemaToString(schema));
-            el.NewElement("CstmrCdtTrfInitn");
-
-            // Part 1: Group Header
-            var grpHdr = XmlUtils.GetFirstElement(xml, "CstmrCdtTrfInitn").NewElement("GrpHdr");
-            grpHdr.NewElement("MsgId", MessageIdentification);
-            grpHdr.NewElement("CreDtTm", StringUtils.FormatDateTime(CreationDate));
-            grpHdr.NewElement("NbOfTxs", numberOfTransactions);
-            grpHdr.NewElement("CtrlSum", StringUtils.FormatAmount(headerControlSum));
-            if (!String.IsNullOrEmpty(InitiatingPartyName) || InitiatingPartyId != null)
+            if (xml == null)
             {
-                var initgPty = grpHdr.NewElement("InitgPty");
+                xml = new XmlDocument();
+                xml.AppendChild(xml.CreateXmlDeclaration("1.0", Encoding.UTF8.BodyName, "yes"));
+                var el = (XmlElement)xml.AppendChild(xml.CreateElement("Document"));
+                el.SetAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
+                el.SetAttribute("xmlns", "urn:iso:std:iso:20022:tech:xsd:" + SepaSchemaUtils.SepaSchemaToString(schema));
+                el.NewElement("CstmrCdtTrfInitn");
 
-                if (!String.IsNullOrEmpty(InitiatingPartyName))
+                // Part 1: Group Header
+                var grpHdr = XmlUtils.GetFirstElement(xml, "CstmrCdtTrfInitn").NewElement("GrpHdr");
+                grpHdr.NewElement("MsgId", MessageIdentification);
+                grpHdr.NewElement("CreDtTm", StringUtils.FormatDateTime(CreationDate));
+                grpHdr.NewElement("NbOfTxs", numberOfTransactions);
+                grpHdr.NewElement("CtrlSum", StringUtils.FormatAmount(headerControlSum));
+                if (!String.IsNullOrEmpty(InitiatingPartyName) || InitiatingPartyId != null)
                 {
-                    initgPty.NewElement("Nm", InitiatingPartyName);
-                }
+                    var initgPty = grpHdr.NewElement("InitgPty");
 
-                if (InitiatingPartyId != null)
-                {
-                    initgPty.
-                        NewElement("Id").NewElement("OrgId").
-                        NewElement("Othr").NewElement("Id", InitiatingPartyId);
+                    if (!String.IsNullOrEmpty(InitiatingPartyName))
+                    {
+                        initgPty.NewElement("Nm", InitiatingPartyName);
+                    }
+
+                    if (InitiatingPartyId != null)
+                    {
+                        initgPty.
+                            NewElement("Id").NewElement("OrgId").
+                            NewElement("Othr").NewElement("Id", InitiatingPartyId);
+                    }
                 }
             }
+
+            else
+            {
+                var nbOfTxs = xml.SelectSingleNode("//NbOfTxs");
+                var ctrlSum = xml.SelectSingleNode("//CtrlSum");
+
+                nbOfTxs.InnerText = (StringUtils.GetAmountFromString(nbOfTxs.InnerText) + numberOfTransactions).ToString();
+                ctrlSum.InnerText = StringUtils.FormatAmount(StringUtils.GetAmountFromString(ctrlSum.InnerText) + headerControlSum);
+            }
+
+
+
 
             // Part 2: Payment Information
             var pmtInf = XmlUtils.GetFirstElement(xml, "CstmrCdtTrfInitn").NewElement("PmtInf");
@@ -130,15 +146,19 @@ namespace SepaWriter
             {
                 pmtInf.NewElement("PmtTpInf").NewElement("SvcLvl").NewElement("Cd", "SEPA");
             }
-            if (LocalInstrumentCode != null)
-                XmlUtils.GetFirstElement(pmtInf, "PmtTpInf").NewElement("LclInstr")
+
+
+            if (LocalInstrumentCode != null) {
+
+                XmlUtils.GetFirstElement(pmtInf, "PmtTpInf").NewElement("LclInstrm")
                         .NewElement("Cd", LocalInstrumentCode);
 
-			if (CategoryPurposeCode != null) {
-				 XmlUtils.GetFirstElement(pmtInf, "PmtTpInf").
-					 NewElement("CtgyPurp").
-					 NewElement("Cd", CategoryPurposeCode);
-			}
+                    if (CategoryPurposeCode != null) {
+                        XmlUtils.GetFirstElement(pmtInf, "PmtTpInf").
+                            NewElement("CtgyPurp").
+                            NewElement("Cd", CategoryPurposeCode);
+                    }
+            }
 			
 			pmtInf.NewElement("ReqdExctnDt", StringUtils.FormatDate(RequestedExecutionDate));
             var dbtr = pmtInf.NewElement("Dbtr");
@@ -225,9 +245,23 @@ namespace SepaWriter
                 cdtTrfTxInf.NewElement("RgltryRptg").NewElement("Dtls").NewElement("Cd", transfer.RegulatoryReportingCode);
             }
 
-            if (!string.IsNullOrEmpty(transfer.RemittanceInformation)) {
-				cdtTrfTxInf.NewElement("RmtInf").NewElement("Ustrd", transfer.RemittanceInformation);
-			}
+            if (transfer.IsDomesticTransaction)
+            {
+                var strd = cdtTrfTxInf.NewElement("RmtInf").NewElement("Strd");
+
+                var cdtrRefInf = strd.NewElement("CdtrRefInf");
+                cdtrRefInf.NewElement("Tp").NewElement("CdOrPrtry").NewElement("Cd", "SCOR");
+
+                if (!string.IsNullOrEmpty(transfer.RemittanceInformation))
+                {
+                    cdtrRefInf.NewElement("Ref", transfer.RemittanceInformation);
+                }
+
+            }
+            else if (!string.IsNullOrEmpty(transfer.RemittanceInformation))
+            {
+                cdtTrfTxInf.NewElement("RmtInf").NewElement("Ustrd", transfer.RemittanceInformation);
+            }
         }
         protected override bool CheckSchema(SepaSchema aSchema)
         {
